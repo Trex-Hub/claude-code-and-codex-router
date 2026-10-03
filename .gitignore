@@ -1,0 +1,25 @@
+# deps
+node_modules/
+
+# next
+.next/
+out/
+
+# runtime data
+data/
+*.db
+*.db-journal
+*.db-wal
+
+# env
+.env
+.env.local
+.env*.local
+
+# reference clone of upstream (see UPSTREAM.md) — throwaway, never committed
+ant-auth/
+
+# misc
+.DS_Store
+*.log
+*.tsbuildinfo

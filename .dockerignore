@@ -1,0 +1,11 @@
+node_modules
+.next
+data
+ant-auth
+.git
+.github
+*.log
+.env
+.env.local
+Dockerfile
+docker-compose.yml

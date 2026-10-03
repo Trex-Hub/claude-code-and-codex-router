@@ -1,0 +1,169 @@
+:root {
+  --bg: #0e0f12;
+  --panel: #17191e;
+  --border: #2a2d34;
+  --text: #e6e7ea;
+  --muted: #9aa0aa;
+  --accent: #6c8cff;
+  --ok: #4ec98a;
+  --warn: #e0b341;
+  --err: #e06666;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+a {
+  color: var(--accent);
+}
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+header.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+h2 {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 32px 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  color: var(--muted);
+  font-weight: normal;
+  font-size: 12px;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+  background: #0b0c0f;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+button {
+  cursor: pointer;
+  background: #22252c;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button.primary {
+  background: var(--accent);
+  color: #0b0c0f;
+  border-color: var(--accent);
+}
+
+button.danger {
+  color: var(--err);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.grow {
+  flex: 1;
+  min-width: 220px;
+}
+
+.state {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+
+.state.active {
+  color: var(--ok);
+}
+.state.cooling {
+  color: var(--warn);
+}
+.state.error,
+.state.disabled {
+  color: var(--err);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: ui-monospace, monospace;
+}
+
+.banner {
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+
+.banner.err {
+  background: #2a1618;
+  border: 1px solid #5c2b2f;
+  color: var(--err);
+}
+
+.login {
+  max-width: 360px;
+  margin: 15vh auto;
+}
+
+.gap {
+  margin-top: 12px;
+}

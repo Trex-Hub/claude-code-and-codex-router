@@ -1,0 +1,30 @@
+{
+  "name": "claude-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build && node scripts/copy-static.mjs",
+    "start": "node scripts/start.mjs",
+    "start:next": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:up": "mkdir -p data && dbmate up",
+    "db:down": "mkdir -p data && dbmate down",
+    "db:new": "dbmate new",
+    "db:status": "mkdir -p data && dbmate status"
+  },
+  "dependencies": {
+    "next": "15.1.6",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "19.0.8",
+    "@types/react-dom": "19.0.3",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
