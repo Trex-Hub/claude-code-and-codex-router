@@ -22,6 +22,7 @@ export interface AccountView {
   provider: ProviderId;
   label: string;
   email: string | null;
+  organizationType: string | null;
   planTier: string | null;
   rateLimitTier: string | null;
   subscriptionStatus: string | null;
@@ -30,6 +31,47 @@ export interface AccountView {
   cooldownUntil: number | null;
   lastError: string | null;
   lastSelectedAt: number | null;
+}
+
+/**
+ * Human name for an account's subscription plan.
+ *
+ * The two providers report this in different fields and neither is a plain
+ * label, so it is derived here rather than stored:
+ *
+ * - Anthropic: `organizationType` is authoritative (`claude_pro`, `claude_max`),
+ *   and `rateLimitTier` only adds the Max multiplier (`..._max_5x`, `..._max_20x`).
+ *   Note the tier slug is not always trustworthy — Anthropic has shipped Pro
+ *   accounts a free-tier `default_claude_ai` slug — so the multiplier is only
+ *   applied when it is unambiguous, and the name never depends on it.
+ * - Codex: `planTier` from the access-token claims (`plus`, `pro`).
+ */
+export function planLabel(a: {
+  provider: ProviderId;
+  organizationType?: string | null;
+  planTier?: string | null;
+  rateLimitTier?: string | null;
+}): string | null {
+  const multiplier = a.rateLimitTier?.match(/_max_(\d+x)/)?.[1];
+
+  if (a.provider === "openai-codex") {
+    if (!a.planTier) return null;
+    const name = a.planTier.charAt(0).toUpperCase() + a.planTier.slice(1).toLowerCase();
+    return `ChatGPT ${name}`;
+  }
+
+  // Anthropic: prefer organizationType, fall back to the tier slug.
+  const org = a.organizationType ?? a.rateLimitTier ?? null;
+  if (!org) return null;
+
+  const isPro = org.includes("claude_pro") || org === "default_claude_pro";
+  const isMax = org.includes("claude_max") || org.includes("max_5x") || org.includes("max_20x");
+  const base = isMax ? "Claude Max" : isPro ? "Claude Pro" : null;
+  if (!base) {
+    // Unknown slug (e.g. free tier): title-case it rather than invent a plan.
+    return org.replace(/^default_/, "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return multiplier ? `${base} ${multiplier}` : base;
 }
 
 export interface KeyView {
@@ -45,6 +87,8 @@ export interface UsageRow {
   accountId: string;
   requests: number;
   inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
   outputTokens: number;
   lastUsedAt: number | null;
 }
@@ -54,6 +98,8 @@ export interface UsageEvent {
   accountId: string;
   model: string | null;
   inputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
   outputTokens: number | null;
   status: number | null;
   latencyMs: number | null;
@@ -85,6 +131,20 @@ const cf = new Intl.NumberFormat("en-US", {
 
 export const fmtInt = (n: number | null | undefined) => nf.format(n ?? 0);
 export const fmtCompact = (n: number | null | undefined) => cf.format(n ?? 0);
+
+/**
+ * True input volume: fresh input plus both cache buckets. The relay always
+ * stores these three as disjoint counts (see `src/lib/usage.ts`), so this is
+ * the real number of tokens the model read. `cacheReadTokens` is the subset
+ * of that which came from a cache hit.
+ */
+export function totalInput(row: {
+  inputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+}): number {
+  return (row.inputTokens ?? 0) + (row.cacheReadTokens ?? 0) + (row.cacheWriteTokens ?? 0);
+}
 
 export function fmtAgo(ms: number | null, now = Date.now()): string {
   if (!ms) return "never";

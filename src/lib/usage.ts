@@ -45,6 +45,8 @@ export interface AccountUsageRow {
   accountId: string;
   requests: number;
   inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
   outputTokens: number;
   lastUsedAt: number | null;
 }
@@ -55,6 +57,8 @@ export function usageByAccount(): AccountUsageRow[] {
       `SELECT account_id AS accountId,
               COUNT(*) AS requests,
               COALESCE(SUM(input_tokens), 0) AS inputTokens,
+              COALESCE(SUM(cache_read_tokens), 0) AS cacheReadTokens,
+              COALESCE(SUM(cache_write_tokens), 0) AS cacheWriteTokens,
               COALESCE(SUM(output_tokens), 0) AS outputTokens,
               MAX(created_at) AS lastUsedAt
        FROM usage_events

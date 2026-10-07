@@ -164,8 +164,12 @@ from `prompt_cache_key`.
 
 - The Codex backend sends SSE **without** a `Content-Type`; the adapter sets
   `alwaysStreams` so any 2xx is treated (and labelled) as SSE.
-- Usage comes from `response.completed|done|incomplete`; cached tokens are
-  inside `input_tokens`, so stored `input = input_tokens − cached`.
+- Usage comes from `response.completed|done|incomplete`. OpenAI counts cached
+  tokens *inside* `input_tokens`, so the adapter stores three disjoint buckets:
+  `input = input_tokens − cached` (fresh), `cache_read = cached`, and
+  `cache_write = 0`. Anthropic reports the same three separately already, so
+  the dashboard can total input as `input + cache_read + cache_write` for
+  either provider.
 - `429` cooldown uses `error.resets_at` / `resets_in_seconds` (hours for the
   5h/weekly windows), falling back to `Retry-After`.
 - `401` marks the account `error` and fails over (`failoverOn401`).

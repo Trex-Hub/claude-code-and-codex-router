@@ -46,7 +46,9 @@ import {
   fmtUntil,
   jsonInit,
   maskKey,
+  planLabel,
   PROVIDERS,
+  totalInput,
   type AccountView,
   type KeyView,
   type UsageEvent,
@@ -245,10 +247,11 @@ export default function Dashboard() {
 
   const totals = useMemo(() => {
     const requests = usage.byAccount.reduce((n, u) => n + u.requests, 0);
-    const input = usage.byAccount.reduce((n, u) => n + u.inputTokens, 0);
+    const input = usage.byAccount.reduce((n, u) => n + totalInput(u), 0);
+    const cached = usage.byAccount.reduce((n, u) => n + u.cacheReadTokens, 0);
     const output = usage.byAccount.reduce((n, u) => n + u.outputTokens, 0);
     const failed = usage.recent.filter((e) => (e.status ?? 0) >= 400).length;
-    return { requests, input, output, failed };
+    return { requests, input, cached, output, failed };
   }, [usage]);
 
   const active = accounts.filter((a) => a.state === "active").length;
@@ -294,7 +297,7 @@ export default function Dashboard() {
           loading={!loaded}
         />
         <Stat icon={ActivityIcon} label="Requests" value={fmtCompact(totals.requests)} hint={`${errRate}% errors in last ${usage.recent.length}`} loading={!loaded} />
-        <Stat icon={ZapIcon} label="Tokens" value={fmtCompact(totals.input + totals.output)} hint={`${fmtCompact(totals.input)} in · ${fmtCompact(totals.output)} out`} loading={!loaded} />
+        <Stat icon={ZapIcon} label="Tokens" value={fmtCompact(totals.input + totals.output)} hint={`${fmtCompact(totals.input)} in (${fmtCompact(totals.cached)} cached) · ${fmtCompact(totals.output)} out`} loading={!loaded} />
         <Stat icon={KeyRoundIcon} label="Relay keys" value={String(keys.length)} hint="issued to clients" loading={!loaded} />
       </section>
 
@@ -329,7 +332,7 @@ export default function Dashboard() {
                       <TableHead>Plan</TableHead>
                       <TableHead>State</TableHead>
                       <TableHead className="text-right">Requests</TableHead>
-                      <TableHead className="text-right">Tokens in / out</TableHead>
+                      <TableHead className="text-right">Tokens in / cached / out</TableHead>
                       <TableHead>Last used</TableHead>
                       <TableHead className="pr-6"><span className="sr-only">Actions</span></TableHead>
                     </TableRow>
@@ -348,10 +351,7 @@ export default function Dashboard() {
                             <div className="text-xs text-muted-foreground">{a.email ?? "—"}</div>
                           </TableCell>
                           <TableCell>
-                            <div className="capitalize">{a.planTier ?? "—"}</div>
-                            {a.rateLimitTier ? (
-                              <div className="font-mono text-xs text-muted-foreground">{a.rateLimitTier}</div>
-                            ) : null}
+                            <div>{planLabel(a) ?? "—"}</div>
                           </TableCell>
                           <TableCell><StateBadge account={a} /></TableCell>
                           <TableCell className="text-right font-mono tabular-nums">{fmtInt(u?.requests)}</TableCell>
@@ -359,9 +359,13 @@ export default function Dashboard() {
                             {u ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span>{fmtCompact(u.inputTokens)} / {fmtCompact(u.outputTokens)}</span>
+                                  <span>
+                                    {fmtCompact(totalInput(u))} / {fmtCompact(u.cacheReadTokens)} / {fmtCompact(u.outputTokens)}
+                                  </span>
                                 </TooltipTrigger>
-                                <TooltipContent>{fmtInt(u.inputTokens)} in · {fmtInt(u.outputTokens)} out</TooltipContent>
+                                <TooltipContent>
+                                  {fmtInt(totalInput(u))} in ({fmtInt(u.cacheReadTokens)} cached, {fmtInt(u.cacheWriteTokens)} written) · {fmtInt(u.outputTokens)} out
+                                </TooltipContent>
                               </Tooltip>
                             ) : "—"}
                           </TableCell>
@@ -496,7 +500,7 @@ export default function Dashboard() {
                       <TableHead className="pl-6">Time</TableHead>
                       <TableHead>Model</TableHead>
                       <TableHead>Account</TableHead>
-                      <TableHead className="text-right">Tokens in / out</TableHead>
+                      <TableHead className="text-right">Tokens in / cached / out</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="pr-6 text-right">Latency</TableHead>
                     </TableRow>
@@ -512,7 +516,7 @@ export default function Dashboard() {
                             {labelById.get(e.accountId) ?? <span className="font-mono text-xs text-muted-foreground">{e.accountId.slice(0, 8)}</span>}
                           </TableCell>
                           <TableCell className="text-right font-mono tabular-nums">
-                            {fmtInt(e.inputTokens)} / {fmtInt(e.outputTokens)}
+                            {fmtInt(totalInput(e))} / {fmtInt(e.cacheReadTokens)} / {fmtInt(e.outputTokens)}
                           </TableCell>
                           <TableCell>
                             <Badge variant="ghost" className={cn("font-mono", bad ? "bg-destructive/15 text-destructive" : "bg-success/15 text-success")}>

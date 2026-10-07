@@ -151,8 +151,11 @@ Notes:
   `developer`/`system` input message into `instructions` and forces both.
 - A `429` cools the seat down until the reset time Codex reports (can be
   hours for the 5h/weekly windows), then fails over to another seat.
-- Token counts are stored as `input − cached` and `cache_read = cached`,
-  matching the Anthropic rows.
+- Token counts are stored as three disjoint buckets — `input` (fresh),
+  `cache_read` and `cache_write` — for both providers. OpenAI reports cached
+  tokens inside `input_tokens` and the relay splits them out; Anthropic already
+  reports them separately. Total input is their sum, and `cache_read` is the
+  cached subset of it.
 
 ## Scripts
 
