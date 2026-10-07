@@ -1,10 +1,11 @@
 # claude-router — Architecture (v1)
 
-A self-hosted relay that pools several Claude Code subscription seats behind one
-Anthropic-compatible endpoint. Clients (Pi, and anything else that speaks the
-`anthropic-messages` wire format) point at the relay with a relay API key; the
-relay picks an account, applies the Claude Code OAuth request shaping, forwards
-to Anthropic, and fails over to another account on rate limits.
+A self-hosted relay that pools several Claude Code and ChatGPT/Codex subscription
+seats behind an Anthropic-compatible endpoint (`/v1/messages`) and an OpenAI
+Responses-compatible endpoint (`/v1/responses`). Clients (Pi, and anything else
+that speaks `anthropic-messages` or `openai-responses`) point at the relay with
+a relay API key; the relay picks an account of the matching provider, shapes the
+request, forwards upstream, and fails over to another account on rate limits.
 
 > Deployment is **on-prem, VPN/physical access only**. Security posture is
 > intentionally loose (no TLS, tokens at rest unencrypted). See
@@ -45,6 +46,13 @@ Next.js route handler (runtime = nodejs)
    └─ record      usage from message_delta; on error → failover / retry rules
 ```
 
+`/v1/responses` follows the same pipeline with a Codex adapter: account
+selection is restricted to `provider = 'openai-codex'`, the body is normalized
+(see [Codex provider](#codex-provider)), and the upstream is
+`POST ${CODEX_API_BASE}/codex/responses`. The loop (select → refresh → forward →
+stream → record → failover) lives in `src/lib/relay-core.ts`; each provider
+supplies a `RelayAdapter`.
+
 Dashboard (same app): account CRUD, OAuth add-account flow, usage over time,
 per-account rate-limit status, relay-key management.
 
@@ -74,6 +82,19 @@ per-account rate-limit status, relay-key management.
 
 The relay presents the union of models the pooled accounts can serve. Model
 list is curated in config; the relay does not proxy Anthropic's `/v1/models`.
+
+Codex seats use a second provider entry. Pi's `openai-codex-responses` client
+requires a ChatGPT JWT as `apiKey`, so it cannot carry a relay key; the relay is
+addressed as plain `openai-responses` instead:
+
+```json
+"codex-relay": {
+  "baseUrl": "http://relay.local:3000/v1",   // the OpenAI SDK appends /responses
+  "apiKey": "<relay key>",                    // sent as Authorization: Bearer
+  "api": "openai-responses",
+  "models": [ { "id": "gpt-5.5", ... } ]
+}
+```
 
 ---
 
@@ -116,6 +137,42 @@ list is curated in config; the relay does not proxy Anthropic's `/v1/models`.
 
 Failover only applies **before the first byte is streamed**. Once SSE has
 started, an upstream failure is surfaced to the client, not retried.
+
+---
+
+
+
+## Codex provider
+
+Added alongside Anthropic; accounts carry `provider ∈ { anthropic, openai-codex }`
+and `chatgpt_account_id`. Selection filters by provider, so a Codex request
+never lands on a Claude seat and vice versa.
+
+**Request normalization** (`src/lib/relay-codex.ts`, mirrors pi-ai's
+`openai-codex-responses` body): allowlist of `model, instructions, input, text,
+include, prompt_cache_key, tool_choice, parallel_tool_calls, temperature,
+service_tier, tools, reasoning`; forces `store:false`, `stream:true`; hoists the
+first `developer`/`system` input message into `instructions` (default
+"You are a helpful assistant."); wraps string `input`. `stream:false` → `400`.
+
+**Upstream headers:** `chatgpt-account-id` (account row, else JWT claim
+`https://api.openai.com/auth` → `chatgpt_account_id`), `originator: pi`,
+`OpenAI-Beta: responses=experimental`, `session-id` / `x-client-request-id`
+from `prompt_cache_key`.
+
+**Differences from Anthropic:**
+
+- The Codex backend sends SSE **without** a `Content-Type`; the adapter sets
+  `alwaysStreams` so any 2xx is treated (and labelled) as SSE.
+- Usage comes from `response.completed|done|incomplete`; cached tokens are
+  inside `input_tokens`, so stored `input = input_tokens − cached`.
+- `429` cooldown uses `error.resets_at` / `resets_in_seconds` (hours for the
+  5h/weekly windows), falling back to `Retry-After`.
+- `401` marks the account `error` and fails over (`failoverOn401`).
+
+**OAuth:** authorization-code + PKCE against `auth.openai.com`, redirect
+`http://localhost:1455/auth/callback`, a separate temporary listener on `:1455`
+(Anthropic keeps `:53692`). Pending logins are keyed by provider + `state`.
 
 ---
 
@@ -191,7 +248,8 @@ payload shapes and skips already-shaped blocks.
 SQLite (WAL mode), migrated with **dbmate**. Raw SQL, no ORM.
 
 - **accounts** — see [db/migrations](./db/migrations). Holds tokens + plan
-profile + state machine fields (`state`, `cooldown_until`, `last_selected_at`).
+profile + state machine fields (`state`, `cooldown_until`, `last_selected_at`)
++ `provider` and `chatgpt_account_id`.
 - **relay_keys** — the shared secrets clients send. Plaintext (perimeter is the
 VPN). `revoked_at` for soft revoke.
 - **usage_events** — one row per relayed request; the dashboard aggregates it.
@@ -210,6 +268,7 @@ Schema lives in versioned `.sql` migrations; see `db/migrations/`.
 | `DATABASE_URL`              | dbmate + app SQLite path              | `sqlite:/data/relay.db`     |
 | `RELAY_ADMIN_PASSWORD`      | dashboard login                       | — (required)                |
 | `ANTHROPIC_API_BASE`        | upstream base                         | `https://api.anthropic.com` |
+| `CODEX_API_BASE`            | Codex upstream base (`/codex/responses` appended) | `https://chatgpt.com/backend-api` |
 | `RELAY_CLAUDE_CODE_VERSION` | billing-header version pin (vendored) | bundled `2.1.280`           |
 | `RELAY_DEBUG`               | shaping debug logs                    | off                         |
 | `PORT`                      | listen port                           | `3000`                      |
@@ -252,6 +311,10 @@ pasted into issues/docs).
 refresh.
 - **Failover** — mocked upstream returning `429`, `version_too_old`, `5xx`
 drives the documented transitions.
+- **Relay (Anthropic)** — characterization tests (`test/relay-anthropic.test.ts`)
+pin the pre-refactor behavior, including usage merging across SSE events.
+- **Relay (Codex)** — mocked backend: body normalization, headers, usage,
+`resets_at` cooldown, 401/429/5xx failover, provider isolation.
 - **Relay** — end-to-end against a real pooled account (manual/integration).
 
 ---

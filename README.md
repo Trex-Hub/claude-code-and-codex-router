@@ -1,11 +1,14 @@
 # claude-relay
 
-A self-hosted relay that pools several Claude Code subscription seats behind
-one Anthropic-compatible endpoint, with automatic failover on rate limits.
+A self-hosted relay that pools several Claude Code and ChatGPT/Codex
+subscription seats behind Anthropic-compatible (`/v1/messages`) and
+OpenAI Responses-compatible (`/v1/responses`) endpoints, with automatic
+failover on rate limits.
 
 Clients (Pi) point at the relay with a relay API key; the relay picks an
-account, refreshes its OAuth token, applies the Claude Code request shaping,
-forwards to Anthropic, and fails over to another account when one is rate
+account of the right provider, refreshes its OAuth token, shapes the request
+(Claude Code shaping for Anthropic, Codex body normalization for ChatGPT),
+forwards upstream, and fails over to another account when one is rate
 limited.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design and
@@ -35,8 +38,8 @@ pnpm dev
 Open <http://localhost:3000>, sign in with `RELAY_ADMIN_PASSWORD`, then:
 
 1. **Relay keys** → create a key. Copy it.
-2. **Add account** → start login, open the Claude sign-in URL and sign in.
-   Repeat per seat.
+2. **Add account** → pick a provider (Claude or ChatGPT Codex), start login,
+   open the sign-in URL and sign in. Repeat per seat.
 
    Anthropic redirects the browser to `http://localhost:53692/callback` (the
    only redirect the Claude Code client is registered for). While a login is
@@ -46,6 +49,11 @@ Open <http://localhost:3000>, sign in with `RELAY_ADMIN_PASSWORD`, then:
    Docker's `-p 53692:53692`. If the browser shows "connection refused", copy
    the URL from the address bar and paste it into the dashboard (it submits on
    paste).
+
+   ChatGPT Codex logins work the same way, with redirect
+   `http://localhost:1455/auth/callback` and listener port `1455`
+   (`ssh -L 1455:localhost:1455 <relay-host>`, or Docker's `-p 1455:1455`).
+   The OAuth client is the Codex CLI's, so no other redirect is accepted.
 
 ### Production (local)
 
@@ -72,6 +80,7 @@ docker build -t claude-relay .
 docker run -d --name claude-relay \
   -p 3000:3000 \
   -p 53692:53692 \
+  -p 1455:1455 \
   -v claude-relay-data:/data \
   -e RELAY_ADMIN_PASSWORD=change-me \
   -e RELAY_SESSION_SECRET=change-me-too \
@@ -111,6 +120,42 @@ keys**. It is *not* an environment variable; the env holds only
 the key as the `x-api-key` header; the relay also accepts
 `Authorization: Bearer <key>` for other clients.
 
+### ChatGPT Codex provider
+
+Add a second provider. Pi's native `openai-codex-responses` client decodes the
+`apiKey` as a ChatGPT JWT, so it cannot carry a relay key; use the plain
+`openai-responses` API instead. The OpenAI SDK appends `/responses` to
+`baseUrl`, so `/v1` must be part of it:
+
+```json
+{
+  "providers": {
+    "codex-relay": {
+      "baseUrl": "http://relay.local:3000/v1",
+      "apiKey": "$CLAUDE_RELAY_KEY",
+      "api": "openai-responses",
+      "models": [
+        { "id": "gpt-5.5", "name": "GPT-5.5 (relay)", "reasoning": true }
+      ]
+    }
+  }
+}
+```
+
+The same relay key works for both providers (`Authorization: Bearer` here).
+Model ids and limits come from pi-ai's `openai-codex` catalog
+(`models.generated.js`); list the ones your plan serves.
+
+Notes:
+
+- Only streaming is supported; `stream: false` returns `400`.
+- Codex wants `instructions` and `store: false`; the relay moves the first
+  `developer`/`system` input message into `instructions` and forces both.
+- A `429` cools the seat down until the reset time Codex reports (can be
+  hours for the 5h/weekly windows), then fails over to another seat.
+- Token counts are stored as `input − cached` and `cache_read = cached`,
+  matching the Anthropic rows.
+
 ## Scripts
 
 | Command | Purpose |
@@ -126,11 +171,13 @@ the key as the `x-api-key` header; the relay also accepts
 
 ```
 src/lib/shaping/   vendored from pi-anthropic-auth (MIT) — the request shaping
-src/lib/oauth/     Claude Code OAuth (PKCE login, refresh, profile)
+src/lib/oauth/     Claude Code + ChatGPT Codex OAuth (login, refresh, profile)
 src/lib/accounts   account store + state machine
 src/lib/refresh    single-flight token refresh
-src/lib/relay      the /v1/messages forward + failover
-src/app/v1         relay endpoint — /v1/messages (+count_tokens)
+src/lib/relay-core shared forward + failover loop (provider adapters plug in)
+src/lib/relay      Anthropic adapter (/v1/messages)
+src/lib/relay-codex Codex adapter (/v1/responses): body normalization, usage
+src/app/v1         relay endpoints — /v1/messages (+count_tokens), /v1/responses
 src/app/api        dashboard API
 src/app            dashboard UI
 db/migrations      dbmate SQL migrations
