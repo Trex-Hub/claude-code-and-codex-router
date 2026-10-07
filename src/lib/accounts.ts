@@ -3,8 +3,11 @@ import { getDb, now } from "./db";
 
 export type AccountState = "active" | "cooling" | "disabled" | "error";
 
+export type Provider = "anthropic" | "openai-codex";
+
 export interface Account {
   id: string;
+  provider: Provider;
   label: string;
   email: string | null;
   orgName: string | null;
@@ -14,6 +17,7 @@ export interface Account {
   rateLimitTier: string | null;
   subscriptionStatus: string | null;
   hasExtraUsageEnabled: boolean | null;
+  chatgptAccountId: string | null;
   accessToken: string;
   refreshToken: string;
   accessExpiresAt: number;
@@ -38,6 +42,7 @@ export interface AccountProfile {
 
 interface AccountRow {
   id: string;
+  provider: string;
   label: string;
   email: string | null;
   org_name: string | null;
@@ -47,6 +52,7 @@ interface AccountRow {
   rate_limit_tier: string | null;
   subscription_status: string | null;
   has_extra_usage_enabled: number | null;
+  chatgpt_account_id: string | null;
   access_token: string;
   refresh_token: string;
   access_expires_at: number;
@@ -61,6 +67,7 @@ interface AccountRow {
 function toAccount(row: AccountRow): Account {
   return {
     id: row.id,
+    provider: row.provider as Provider,
     label: row.label,
     email: row.email,
     orgName: row.org_name,
@@ -73,6 +80,7 @@ function toAccount(row: AccountRow): Account {
       row.has_extra_usage_enabled === null
         ? null
         : row.has_extra_usage_enabled === 1,
+    chatgptAccountId: row.chatgpt_account_id,
     accessToken: row.access_token,
     refreshToken: row.refresh_token,
     accessExpiresAt: row.access_expires_at,
@@ -108,6 +116,11 @@ export function getAccount(id: string): Account | undefined {
 }
 
 export interface NewAccount {
+  /** Defaults to `anthropic`. */
+  provider?: Provider;
+  chatgptAccountId?: string | null;
+  planTier?: string | null;
+  email?: string | null;
   label: string;
   accessToken: string;
   refreshToken: string;
@@ -120,13 +133,18 @@ export function createAccount(input: NewAccount): Account {
   getDb()
     .prepare(
       `INSERT INTO accounts
-        (id, label, access_token, refresh_token, access_expires_at,
-         state, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`,
+        (id, provider, label, chatgpt_account_id, plan_tier, email,
+         access_token, refresh_token, access_expires_at, state,
+         created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
     )
     .run(
       id,
+      input.provider ?? "anthropic",
       input.label,
+      input.chatgptAccountId ?? null,
+      input.planTier ?? null,
+      input.email ?? null,
       input.accessToken,
       input.refreshToken,
       input.accessExpiresAt,
@@ -152,15 +170,24 @@ export function setTokens(
   accessToken: string,
   refreshToken: string,
   accessExpiresAt: number,
+  chatgptAccountId?: string,
 ): void {
   getDb()
     .prepare(
       `UPDATE accounts
        SET access_token = ?, refresh_token = ?, access_expires_at = ?,
+           chatgpt_account_id = COALESCE(?, chatgpt_account_id),
            state = 'active', cooldown_until = NULL, last_error = NULL, updated_at = ?
        WHERE id = ?`,
     )
-    .run(accessToken, refreshToken, accessExpiresAt, now(), id);
+    .run(
+      accessToken,
+      refreshToken,
+      accessExpiresAt,
+      chatgptAccountId ?? null,
+      now(),
+      id,
+    );
 }
 
 /** Writes the profile fields fetched after a successful login/refresh. */
@@ -243,18 +270,21 @@ export function reapCooldowns(): void {
 }
 
 /**
- * Eligible accounts, active first and then least-recently-selected, excluding
- * any ids already tried on this request.
+ * Eligible accounts for `provider`, active first and then least-recently-
+ * selected, excluding any ids already tried on this request.
  */
-export function eligibleAccounts(excludeIds: string[] = []): Account[] {
+export function eligibleAccounts(
+  provider: Provider,
+  excludeIds: string[] = [],
+): Account[] {
   reapCooldowns();
   const rows = getDb()
     .prepare(
       `SELECT * FROM accounts
-       WHERE state = 'active'
+       WHERE state = 'active' AND provider = ?
        ORDER BY COALESCE(last_selected_at, 0) ASC, created_at ASC`,
     )
-    .all() as unknown as AccountRow[];
+    .all(provider) as unknown as AccountRow[];
   const excluded = new Set(excludeIds);
   return rows.map(toAccount).filter((a) => !excluded.has(a.id));
 }

@@ -64,6 +64,18 @@ export function findActiveKey(key: string): RelayKey | undefined {
   return row ? toKey(row) : undefined;
 }
 
+/**
+ * Reads the relay key from a request. Pi's `anthropic-messages` client sends
+ * `x-api-key`; OpenAI-style clients send `Authorization: Bearer`.
+ */
+export function extractKey(req: Request): string | null {
+  const apiKey = req.headers.get("x-api-key")?.trim();
+  if (apiKey) return apiKey;
+  const header = req.headers.get("authorization") ?? "";
+  const key = header.replace(/^Bearer\s+/i, "").trim();
+  return key || null;
+}
+
 export function touchKey(id: string): void {
   getDb().prepare("UPDATE relay_keys SET last_used_at = ? WHERE id = ?").run(now(), id);
 }

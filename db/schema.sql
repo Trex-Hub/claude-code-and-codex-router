@@ -19,7 +19,7 @@ CREATE TABLE accounts (
   last_selected_at            INTEGER,
   created_at                  INTEGER NOT NULL,
   updated_at                  INTEGER NOT NULL
-);
+, provider TEXT NOT NULL DEFAULT 'anthropic', chatgpt_account_id TEXT);
 CREATE INDEX idx_accounts_state ON accounts (state);
 CREATE TABLE relay_keys (
   id           TEXT PRIMARY KEY,
@@ -47,6 +47,8 @@ CREATE TABLE usage_events (
 );
 CREATE INDEX idx_usage_created ON usage_events (created_at);
 CREATE INDEX idx_usage_account ON usage_events (account_id, created_at);
+CREATE INDEX idx_accounts_provider_state ON accounts (provider, state);
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
-  ('20261003000000');
+  ('20261003000000'),
+  ('20261004000000');

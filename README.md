@@ -35,8 +35,17 @@ pnpm dev
 Open <http://localhost:3000>, sign in with `RELAY_ADMIN_PASSWORD`, then:
 
 1. **Relay keys** → create a key. Copy it.
-2. **Add account** → start login, open the Claude sign-in URL, sign in, paste
-   the code (or the full redirect URL) back. Repeat per seat.
+2. **Add account** → start login, open the Claude sign-in URL and sign in.
+   Repeat per seat.
+
+   Anthropic redirects the browser to `http://localhost:53692/callback` (the
+   only redirect the Claude Code client is registered for). While a login is
+   pending the relay listens on that port, so if your browser can reach it the
+   account is added automatically. This works when the browser runs on the
+   relay host, with `ssh -L 53692:localhost:53692 <relay-host>`, or with
+   Docker's `-p 53692:53692`. If the browser shows "connection refused", copy
+   the URL from the address bar and paste it into the dashboard (it submits on
+   paste).
 
 ### Production (local)
 
@@ -62,6 +71,7 @@ docker build -t claude-relay .
 
 docker run -d --name claude-relay \
   -p 3000:3000 \
+  -p 53692:53692 \
   -v claude-relay-data:/data \
   -e RELAY_ADMIN_PASSWORD=change-me \
   -e RELAY_SESSION_SECRET=change-me-too \

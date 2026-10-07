@@ -1,5 +1,6 @@
 import { getAccount, markError, setTokens, type Account } from "./accounts";
-import { refreshTokens } from "./oauth/anthropic";
+import { refreshTokens as refreshAnthropic, type Tokens } from "./oauth/anthropic";
+import { refreshTokens as refreshCodex } from "./oauth/openai-codex";
 
 /** Refresh when the access token expires within this window. */
 const REFRESH_WINDOW_MS = 5 * 60 * 1000;
@@ -33,12 +34,16 @@ async function doRefresh(accountId: string): Promise<Account> {
   }
 
   try {
-    const tokens = await refreshTokens(current.refreshToken);
+    const tokens: Tokens & { chatgptAccountId?: string } =
+      current.provider === "openai-codex"
+        ? await refreshCodex(current.refreshToken)
+        : await refreshAnthropic(current.refreshToken);
     setTokens(
       accountId,
       tokens.accessToken,
       tokens.refreshToken,
       tokens.accessExpiresAt,
+      tokens.chatgptAccountId,
     );
     return getAccount(accountId)!;
   } catch (error) {

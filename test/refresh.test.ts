@@ -15,7 +15,12 @@ vi.mock("@/lib/oauth/anthropic", () => ({
   SCOPES: "test",
 }));
 
-const { createAccount } = await import("@/lib/accounts");
+const codexRefreshSpy = vi.fn();
+vi.mock("@/lib/oauth/openai-codex", () => ({
+  refreshTokens: (...args: unknown[]) => codexRefreshSpy(...args),
+}));
+
+const { createAccount, getAccount } = await import("@/lib/accounts");
 const { ensureFreshToken } = await import("@/lib/refresh");
 
 it("single-flights concurrent refreshes of the same account", async () => {
@@ -54,4 +59,32 @@ it("does not refresh when the token is still valid", async () => {
   const result = await ensureFreshToken(account);
   expect(refreshSpy).not.toHaveBeenCalled();
   expect(result.accessToken).toBe("sk-ant-oat-valid");
+});
+
+it("single-flights concurrent refreshes of a codex account and keeps its account id", async () => {
+  const account = createAccount({
+    provider: "openai-codex",
+    label: "codex-expired",
+    chatgptAccountId: "acct_old",
+    accessToken: "old",
+    refreshToken: "r1",
+    accessExpiresAt: Date.now() - 1000,
+  });
+  refreshSpy.mockClear();
+  codexRefreshSpy.mockResolvedValue({
+    accessToken: "new",
+    refreshToken: "r2",
+    accessExpiresAt: Date.now() + 3_600_000,
+    chatgptAccountId: "acct_new",
+  });
+
+  const results = await Promise.all(
+    Array.from({ length: 5 }, () => ensureFreshToken(account)),
+  );
+
+  expect(codexRefreshSpy).toHaveBeenCalledTimes(1);
+  expect(refreshSpy).not.toHaveBeenCalled();
+  for (const r of results) expect(r.accessToken).toBe("new");
+  expect(getAccount(account.id)?.chatgptAccountId).toBe("acct_new");
+  expect(getAccount(account.id)?.refreshToken).toBe("r2");
 });

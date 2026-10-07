@@ -32,6 +32,11 @@ export const env = {
       "",
     );
   },
+  codexApiBase(): string {
+    return (
+      process.env.CODEX_API_BASE ?? "https://chatgpt.com/backend-api"
+    ).replace(/\/$/, "");
+  },
   port(): number {
     return Number(process.env.PORT ?? 3000);
   },

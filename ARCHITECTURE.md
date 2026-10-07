@@ -146,9 +146,13 @@ delegates them to Pi's runtime). The relay owns them, ported from
 
 **Add account (PKCE, admin, once per seat):**
 
-1. Admin opens `/accounts/new`; relay builds the authorize URL + PKCE verifier
-  and redirects to Anthropic.
-2. Anthropic redirects back to the relay callback with a code.
+1. Admin starts a login in the dashboard; relay builds the authorize URL + PKCE
+  verifier and starts a temporary listener on `:53692`.
+2. Anthropic redirects the *browser* to `http://localhost:53692/callback` (the
+  only redirect the client is registered for — it can't point at the relay).
+  If the browser can reach the listener (same host, published Docker port, or
+  `ssh -L`), the relay completes the login itself; otherwise the admin pastes
+  the redirect URL into the dashboard.
 3. Relay exchanges code → access + refresh tokens, stores them, then calls
   `GET /api/oauth/profile` to populate plan/seat/rate-limit fields.
 4. PKCE state is held **in memory** (single node, rare admin action, short

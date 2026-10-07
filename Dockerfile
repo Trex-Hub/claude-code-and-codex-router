@@ -33,8 +33,9 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     PORT=3000 \
+    RELAY_OAUTH_CALLBACK_HOST=0.0.0.0 \
     DATABASE_URL=sqlite:/data/relay.db
 
-EXPOSE 3000
+EXPOSE 3000 53692 1455
 VOLUME ["/data"]
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

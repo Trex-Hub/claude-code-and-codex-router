@@ -3,8 +3,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+type ProviderId = "anthropic" | "openai-codex";
+
+// Per-provider UI text; redirect URLs mirror src/lib/oauth/{anthropic,openai-codex}.ts.
+const PROVIDERS: Record<
+  ProviderId,
+  { name: string; defaultLabel: string; redirect: string }
+> = {
+  anthropic: {
+    name: "Claude",
+    defaultLabel: "Claude account",
+    redirect: "http://localhost:53692/callback",
+  },
+  "openai-codex": {
+    name: "ChatGPT",
+    defaultLabel: "Codex account",
+    redirect: "http://localhost:1455/auth/callback",
+  },
+};
+
 interface AccountView {
   id: string;
+  provider: ProviderId;
   label: string;
   email: string | null;
   planTier: string | null;
@@ -46,6 +66,7 @@ interface UsageEvent {
 }
 
 interface LoginState {
+  provider: ProviderId;
   loginId: string;
   authorizeUrl: string;
 }
@@ -74,6 +95,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const [addLabel, setAddLabel] = useState("");
+  const [addProvider, setAddProvider] = useState<ProviderId>("anthropic");
   const [login, setLogin] = useState<LoginState | null>(null);
   const [pasteInput, setPasteInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -116,23 +138,52 @@ export default function Dashboard() {
 
   async function startAdd() {
     await run(async () => {
-      const res = await api<LoginState>("/api/accounts", {
+      const res = await api<Omit<LoginState, "provider">>("/api/accounts", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ label: addLabel || "Claude account" }),
+        body: JSON.stringify({
+          provider: addProvider,
+          label: addLabel || PROVIDERS[addProvider].defaultLabel,
+        }),
       });
-      setLogin(res);
+      setLogin({ ...res, provider: addProvider });
       setPasteInput("");
     });
   }
 
-  async function completeAdd() {
+  // The relay's temporary callback listener may finish the login on its own
+  // (browser can reach the relay's callback port); poll so the dashboard follows.
+  useEffect(() => {
+    if (!login) return;
+    const id = login.loginId;
+    const timer = setInterval(async () => {
+      try {
+        const res = await api<{ status: string; message?: string }>(
+          `/api/accounts/login/${id}`,
+        );
+        if (res.status === "complete") {
+          setLogin(null);
+          setAddLabel("");
+          setPasteInput("");
+          void load();
+        } else if (res.status === "error") {
+          setLogin(null);
+          setError(res.message ?? "login failed");
+        }
+      } catch {
+        // transient; keep polling
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [login, load]);
+
+  async function completeAdd(input: string = pasteInput) {
     if (!login) return;
     await run(async () => {
       await api(`/api/accounts/login/${login.loginId}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ input: pasteInput }),
+        body: JSON.stringify({ input }),
       });
       setLogin(null);
       setAddLabel("");
@@ -184,7 +235,10 @@ export default function Dashboard() {
                 return (
                   <tr key={a.id}>
                     <td>
-                      <div>{a.label}</div>
+                      <div>
+                        {a.label}{" "}
+                        <span className="muted">[{PROVIDERS[a.provider].name}]</span>
+                      </div>
                       <div className="muted">{a.email ?? "—"}</div>
                     </td>
                     <td>
@@ -247,6 +301,16 @@ export default function Dashboard() {
       <div className="panel">
         {!login ? (
           <div className="row">
+            <select
+              value={addProvider}
+              onChange={(e) => setAddProvider(e.target.value as ProviderId)}
+            >
+              {(Object.keys(PROVIDERS) as ProviderId[]).map((id) => (
+                <option key={id} value={id}>
+                  {PROVIDERS[id].name}
+                </option>
+              ))}
+            </select>
             <input
               className="grow"
               placeholder="Label (e.g. office-max-1)"
@@ -260,24 +324,35 @@ export default function Dashboard() {
         ) : (
           <div>
             <p>
-              1. Open this URL, sign in to the Claude account, then copy the code
-              or the final redirect URL:
+              1. Open this URL and sign in to the {PROVIDERS[login.provider].name}{" "}
+              account. If the next page says &quot;This site can’t be reached&quot;
+              ({new URL(PROVIDERS[login.provider].redirect).host}),
+              that is expected when the browser isn’t on the relay host — copy
+              the URL from the address bar and paste it below:
             </p>
             <p>
               <a href={login.authorizeUrl} target="_blank" rel="noreferrer">
-                Open Claude sign-in ↗
+                Open {PROVIDERS[login.provider].name} sign-in ↗
               </a>
             </p>
             <p className="muted" style={{ wordBreak: "break-all" }}>
               {login.authorizeUrl}
             </p>
-            <p>2. Paste the code or redirect URL here:</p>
+            <p>2. Paste the redirect URL here (it completes automatically):</p>
             <div className="row">
               <input
                 className="grow"
-                placeholder="code or http://localhost:53692/callback?code=…"
+                placeholder={`code or ${PROVIDERS[login.provider].redirect}?code=…`}
                 value={pasteInput}
                 onChange={(e) => setPasteInput(e.target.value)}
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData("text");
+                  if (text.includes("code=") && !busy) {
+                    e.preventDefault();
+                    setPasteInput(text);
+                    void completeAdd(text);
+                  }
+                }}
               />
               <button
                 className="primary"
