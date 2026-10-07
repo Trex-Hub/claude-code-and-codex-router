@@ -184,42 +184,49 @@ describe("handleResponses", () => {
     const a = mkCodex("a", "tok-a");
     const b = mkCodex("b", "tok-b");
     const resetsAt = Math.floor(Date.now() / 1000) + 3600;
-    const fetchMock = vi.fn(async (_u: unknown, init?: RequestInit) =>
-      new Headers(init?.headers).get("authorization") === "Bearer tok-a"
+    // First seat tried (affinity-chosen) is limited; the other succeeds.
+    let call = 0;
+    const fetchMock = vi.fn(async () => {
+      call += 1;
+      return call === 1
         ? Response.json(
             { error: { code: "usage_limit_reached", resets_at: resetsAt } },
             { status: 429 },
           )
-        : completed(),
-    );
+        : completed();
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const res = await handleResponses(request(), null);
     expect(res.status).toBe(200);
     await res.text();
 
-    const cooled = getAccount(a.id)!;
-    expect(cooled.state).toBe("cooling");
-    expect(cooled.cooldownUntil).toBeGreaterThan(Date.now() + 3_500_000);
-    expect(cooled.cooldownUntil).toBeLessThanOrEqual(resetsAt * 1000 + 1000);
-    expect((await waitForUsage())[0]?.accountId).toBe(b.id);
+    const cooled = [a, b].filter((x) => getAccount(x.id)?.state === "cooling");
+    expect(cooled).toHaveLength(1);
+    const cooledAccount = getAccount(cooled[0]!.id)!;
+    expect(cooledAccount.cooldownUntil).toBeGreaterThan(Date.now() + 3_500_000);
+    expect(cooledAccount.cooldownUntil).toBeLessThanOrEqual(resetsAt * 1000 + 1000);
+    expect((await waitForUsage())[0]?.accountId).not.toBe(cooled[0]!.id);
   });
 
   it("401 marks the account errored and fails over; 5xx everywhere passes through", async () => {
     const a = mkCodex("a", "tok-a");
-    mkCodex("b", "tok-b");
+    const b = mkCodex("b", "tok-b");
+    // First seat tried gets a 401; the second answers. Which is first depends
+    // on affinity hashing, so key the mock on call order rather than token.
+    let call = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_u: unknown, init?: RequestInit) =>
-        new Headers(init?.headers).get("authorization") === "Bearer tok-a"
-          ? new Response("{}", { status: 401 })
-          : completed(),
-      ),
+      vi.fn(async () => {
+        call += 1;
+        return call === 1 ? new Response("{}", { status: 401 }) : completed();
+      }),
     );
     const ok = await handleResponses(request(), null);
     expect(ok.status).toBe(200);
     await ok.text();
-    expect(getAccount(a.id)?.state).toBe("error");
+    const errored = [a, b].filter((x) => getAccount(x.id)?.state === "error");
+    expect(errored).toHaveLength(1);
 
     await resetPool();
     mkCodex("c");

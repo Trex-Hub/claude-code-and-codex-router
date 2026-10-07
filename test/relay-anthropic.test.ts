@@ -68,9 +68,11 @@ describe("handleMessages (anthropic)", () => {
   it("cools down a 429 account and fails over to the next", async () => {
     const a = mkAccount("a", "tok-a");
     const b = mkAccount("b", "tok-b");
-    const fetchMock = vi.fn(async (_u: unknown, init?: RequestInit) => {
-      const auth = new Headers(init?.headers).get("authorization");
-      return auth === "Bearer tok-a"
+    // Whichever seat affinity picks first is rate limited; the other succeeds.
+    let call = 0;
+    const fetchMock = vi.fn(async () => {
+      call += 1;
+      return call === 1
         ? new Response("{}", { status: 429, headers: { "retry-after": "30" } })
         : okStream();
     });
@@ -80,10 +82,12 @@ describe("handleMessages (anthropic)", () => {
     expect(res.status).toBe(200);
     await res.text();
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(getAccount(a.id)?.state).toBe("cooling");
-    expect(getAccount(b.id)?.state).toBe("active");
+
+    // Exactly one seat was tried first and has to be cooling.
+    const cooling = [a, b].filter((x) => getAccount(x.id)?.state === "cooling");
+    expect(cooling).toHaveLength(1);
     const [usage] = await waitForUsage();
-    expect(usage?.accountId).toBe(b.id);
+    expect(usage?.accountId).not.toBe(cooling[0]?.id);
   });
 
   it("passes the last response through when every account is limited", async () => {

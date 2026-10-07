@@ -1,5 +1,10 @@
 export type ProviderId = "anthropic" | "openai-codex";
 
+// The weight functions live in src/lib/weight.ts because the relay needs the
+// same derivation for selection; re-exported so UI components import weight
+// logic from the same place as the rest of the dashboard types.
+export { effectiveWeight as accountWeight, planWeight } from "@/lib/weight";
+
 // Per-provider UI text; redirect URLs mirror src/lib/oauth/{anthropic,openai-codex}.ts.
 export const PROVIDERS: Record<
   ProviderId,
@@ -27,6 +32,7 @@ export interface AccountView {
   rateLimitTier: string | null;
   subscriptionStatus: string | null;
   hasExtraUsageEnabled: boolean | null;
+  weight: number | null;
   state: string;
   cooldownUntil: number | null;
   lastError: string | null;

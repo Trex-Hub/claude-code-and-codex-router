@@ -1,5 +1,4 @@
 import {
-  eligibleAccounts,
   markError,
   setCooldown,
   touchSelected,
@@ -7,6 +6,7 @@ import {
   type Provider,
 } from "./accounts";
 import { ensureFreshToken } from "./refresh";
+import { selectAccount } from "./selection";
 import { recordUsage, type UsageInput } from "./usage";
 
 const MAX_ATTEMPTS = 3;
@@ -51,6 +51,12 @@ export interface RelayAdapter {
    */
   alwaysStreams?: boolean;
   requestId(response: Response): string | null;
+  /**
+   * A stable key identifying the conversation, so repeat turns reuse the same
+   * upstream account (and therefore its warm prompt cache). Null when the
+   * request carries no conversation signal.
+   */
+  affinityKey?: string | null;
   /**
    * On a 401 (after a successful refresh) mark the account `error` and try the
    * next one. Off by default so Anthropic keeps passing 401s through.
@@ -197,8 +203,11 @@ export async function relayWithFailover(
   let lastResponse: Response | undefined;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const candidates = eligibleAccounts(adapter.provider, tried);
-    const account: Account | undefined = candidates[0];
+    const account: Account | undefined = selectAccount(
+      adapter.provider,
+      adapter.affinityKey ?? null,
+      tried,
+    );
     if (!account) break;
 
     tried.push(account.id);
@@ -234,7 +243,8 @@ export async function relayWithFailover(
 
     if (response.status === 401 && adapter.failoverOn401) {
       markError(fresh.id, "upstream rejected the access token (401)");
-      if (eligibleAccounts(adapter.provider, tried).length > 0) {
+      // The seat is out; repin the conversation to whichever seat serves it.
+      if (selectAccount(adapter.provider, adapter.affinityKey ?? null, tried)) {
         await response.body?.cancel();
         continue;
       }
@@ -250,7 +260,7 @@ export async function relayWithFailover(
         setCooldown(fresh.id, Date.now() + retryAfterMs, "rate limited");
       }
       // More accounts to try?
-      if (eligibleAccounts(adapter.provider, tried).length > 0) {
+      if (selectAccount(adapter.provider, adapter.affinityKey ?? null, tried)) {
         await response.body?.cancel();
         continue;
       }

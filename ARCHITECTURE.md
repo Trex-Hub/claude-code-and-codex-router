@@ -104,9 +104,10 @@ addressed as plain `openai-responses` instead:
 
 1. **Auth** — `Authorization: Bearer <relay key>`; look up `relay_keys`, reject
   if unknown or revoked.
-2. **Select account** — candidates = `state != 'disabled'` and not cooling
-  down; order `active` first, then least-recently-used by `last_selected_at`.
-   Stamp `last_selected_at` on pick.
+2. **Select account** — see [Selection & affinity](#selection--affinity). A
+  conversation with a live pin stays on the seat holding its warm prompt cache;
+  new conversations are placed by weight; requests carrying no conversation
+  signal fall back to least-recently-used. Stamp `last_selected_at` on pick.
 3. **Refresh** — if `access_expires_at` < now + 5 min, refresh (see
   [OAuth lifecycle](#oauth-lifecycle)).
 4. **Shape** — run the vendored `shapeAnthropicOAuthPayload()` on the parsed
@@ -128,7 +129,7 @@ addressed as plain `openai-responses` instead:
 
 | Upstream result                                 | Action                                                                                              |
 | ----------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `429` (rate limited)                            | `cooldown_until = now + Retry-After` (default 60s); retry next account (bounded, ≤ N attempts)      |
+| `429` (rate limited)                            | `cooldown_until = now + Retry-After` (default 60s); retry next account (bounded), repinning the conversation to the fallback seat |
 | `claude_code_version_too_old`                   | rebuild billing header at the required version (vendored version-sync), retry **same** account once |
 | `401` / `invalid_grant` after a refresh attempt | mark account `error`, surface in dashboard; try next account                                        |
 | other `4xx`                                     | pass through to client; no failover                                                                 |
@@ -137,6 +138,48 @@ addressed as plain `openai-responses` instead:
 
 Failover only applies **before the first byte is streamed**. Once SSE has
 started, an upstream failure is surfaced to the client, not retried.
+
+---
+
+## Selection & affinity
+
+Selection (`src/lib/selection.ts`) balances two goals that pull in opposite
+directions: reusing prompt caches, and spreading load in proportion to each
+seat's capacity.
+
+| Request | Policy |
+| --- | --- |
+| Continuing a conversation (has an affinity key and a live pin) | The pinned seat, if eligible |
+| New conversation (has an affinity key, no live pin) | Weighted rendezvous pick |
+| No conversation signal | Least-recently-used (`last_selected_at`) |
+
+**Affinity key** — a stable identifier for one conversation, provided by the
+adapter:
+
+- **Codex** — `body.prompt_cache_key`, which Pi already sends.
+- **Anthropic** — derived in `src/lib/affinity.ts` as
+  `sha256(system + tools + first user message)`. The system prompt alone is
+  identical across conversations and the full message list grows every turn, so
+  the first user message is the stable anchor that separates them.
+
+**Pins** (`affinity_pins`, `src/lib/pins.ts`) record which seat a conversation
+belongs to, with a TTL matching the provider cache window (5 min). Pins are what
+make failover sticky: a conversation moved off a rate-limited seat stays on the
+new seat after the old one recovers, instead of snapping back and discarding the
+cache it just wrote.
+
+**Weights** (`src/lib/weight.ts`) are relative, derived from the plan
+(Claude Pro `1`, Max 5x `5`, Max 20x `20`, ChatGPT Plus `1`, Pro `5`), and
+overridable per account from the dashboard. Weight only decides where a *new*
+conversation is pinned — it never rebalances traffic already pinned, so it
+cannot break an active cache.
+
+Placement uses **weighted rendezvous hashing**: the seat maximising
+`-weight / ln(hash(affinityKey, seat))` wins. Rendezvous is used rather than a
+counter because the assignment must be a pure function of the key and the seat
+set — two concurrent requests evaluating selection at the same instant must
+agree, or a conversation's cache splits across two upstream accounts. Adding a
+seat remaps only the conversations that hash toward it.
 
 ---
 
@@ -253,7 +296,9 @@ SQLite (WAL mode), migrated with **dbmate**. Raw SQL, no ORM.
 
 - **accounts** — see [db/migrations](./db/migrations). Holds tokens + plan
 profile + state machine fields (`state`, `cooldown_until`, `last_selected_at`)
-+ `provider` and `chatgpt_account_id`.
++ `provider`, `chatgpt_account_id` and `weight` (NULL = derive from plan).
+- **affinity_pins** — one row per conversation, mapping its affinity key to the
+seat holding its warm prompt cache (see [Selection & affinity](#selection--affinity)).
 - **relay_keys** — the shared secrets clients send. Plaintext (perimeter is the
 VPN). `revoked_at` for soft revoke.
 - **usage_events** — one row per relayed request; the dashboard aggregates it.

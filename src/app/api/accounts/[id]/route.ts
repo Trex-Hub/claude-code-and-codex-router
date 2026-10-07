@@ -5,6 +5,7 @@ import {
   publicAccount,
   setLabel,
   setState,
+  setWeight,
   type AccountState,
 } from "@/lib/accounts";
 
@@ -24,9 +25,9 @@ export async function PATCH(
     return Response.json({ error: { message: "not found" } }, { status: 404 });
   }
 
-  let body: { label?: unknown; state?: unknown };
+  let body: { label?: unknown; state?: unknown; weight?: unknown };
   try {
-    body = (await req.json()) as { label?: unknown; state?: unknown };
+    body = (await req.json()) as { label?: unknown; state?: unknown; weight?: unknown };
   } catch {
     return Response.json({ error: { message: "invalid body" } }, { status: 400 });
   }
@@ -36,6 +37,14 @@ export async function PATCH(
   }
   if (typeof body.state === "string" && STATES.includes(body.state as AccountState)) {
     setState(id, body.state as AccountState);
+  }
+  if (body.weight !== undefined) {
+    // null (or 0) clears the override and restores the plan-derived default.
+    const w =
+      typeof body.weight === "number" && Number.isFinite(body.weight)
+        ? Math.trunc(body.weight)
+        : null;
+    setWeight(id, w && w > 0 ? w : null);
   }
   return Response.json({ account: publicAccount(getAccount(id)!) });
 }

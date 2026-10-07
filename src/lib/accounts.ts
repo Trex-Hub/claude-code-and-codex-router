@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getDb, now } from "./db";
+import { deletePinsForAccount } from "./pins";
 
 export type AccountState = "active" | "cooling" | "disabled" | "error";
 
@@ -18,6 +19,8 @@ export interface Account {
   subscriptionStatus: string | null;
   hasExtraUsageEnabled: boolean | null;
   chatgptAccountId: string | null;
+  /** Relative share of new conversations; NULL means "derive from plan". */
+  weight: number | null;
   accessToken: string;
   refreshToken: string;
   accessExpiresAt: number;
@@ -53,6 +56,7 @@ interface AccountRow {
   subscription_status: string | null;
   has_extra_usage_enabled: number | null;
   chatgpt_account_id: string | null;
+  weight: number | null;
   access_token: string;
   refresh_token: string;
   access_expires_at: number;
@@ -81,6 +85,7 @@ function toAccount(row: AccountRow): Account {
         ? null
         : row.has_extra_usage_enabled === 1,
     chatgptAccountId: row.chatgpt_account_id,
+    weight: row.weight,
     accessToken: row.access_token,
     refreshToken: row.refresh_token,
     accessExpiresAt: row.access_expires_at,
@@ -155,6 +160,7 @@ export function createAccount(input: NewAccount): Account {
 }
 
 export function deleteAccount(id: string): void {
+  deletePinsForAccount(id);
   getDb().prepare("DELETE FROM accounts WHERE id = ?").run(id);
 }
 
@@ -162,6 +168,16 @@ export function setLabel(id: string, label: string): void {
   getDb()
     .prepare("UPDATE accounts SET label = ?, updated_at = ? WHERE id = ?")
     .run(label, now(), id);
+}
+
+/**
+ * Sets the account's selection weight. `null` clears the override so the
+ * plan-derived default applies again.
+ */
+export function setWeight(id: string, weight: number | null): void {
+  getDb()
+    .prepare("UPDATE accounts SET weight = ?, updated_at = ? WHERE id = ?")
+    .run(weight, now(), id);
 }
 
 /** Stores freshly issued tokens (login or refresh). */

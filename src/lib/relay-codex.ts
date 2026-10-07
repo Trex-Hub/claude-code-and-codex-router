@@ -188,6 +188,7 @@ export async function handleResponses(
     model: typeof body.model === "string" ? body.model : null,
     failoverOn401: true,
     alwaysStreams: true,
+    affinityKey: sessionId,
     prepare: (account) => ({
       url: `${env.codexApiBase()}/codex/responses`,
       headers: upstreamHeaders(

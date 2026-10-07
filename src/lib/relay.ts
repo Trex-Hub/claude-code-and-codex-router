@@ -7,6 +7,7 @@ import {
   type RelayAdapter,
 } from "./relay-core";
 import { shapeAnthropicOAuthPayload } from "./shaping/request-shaping";
+import { deriveAffinityKey } from "./affinity";
 import { resolveClaudeCodeVersion } from "./shaping/claude-code-version";
 import { newVersionSync } from "./version-sync";
 
@@ -100,6 +101,9 @@ export async function handleMessages(
   const adapter: RelayAdapter = {
     provider: "anthropic",
     model,
+    // Anthropic carries no session id; derive one so repeat turns of a
+    // conversation reuse the same seat and its warm prompt cache.
+    affinityKey: deriveAffinityKey(rawBody),
     prepare(account) {
       const versionSync = newVersionSync();
       versionSync.recordRequest(shaped);

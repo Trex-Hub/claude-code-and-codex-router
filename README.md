@@ -11,6 +11,13 @@ account of the right provider, refreshes its OAuth token, shapes the request
 forwards upstream, and fails over to another account when one is rate
 limited.
 
+Seat selection is **cache-affine**: a conversation keeps returning to the seat
+that holds its warm prompt cache, and only *new* conversations are spread
+across seats in proportion to their plan (a Max 5x seat takes ~5× the load of a
+Pro). Each account's share is shown as a **Weight** field on the dashboard and
+can be overridden per seat. See
+[Selection & affinity](./ARCHITECTURE.md#selection--affinity).
+
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design and
 [UPSTREAM.md](./UPSTREAM.md) for where the inherited shaping logic comes from.
 
@@ -174,6 +181,10 @@ Notes:
 src/lib/shaping/   vendored from pi-anthropic-auth (MIT) — the request shaping
 src/lib/oauth/     Claude Code + ChatGPT Codex OAuth (login, refresh, profile)
 src/lib/accounts   account store + state machine
+src/lib/selection  cache-affine, weight-aware seat selection
+src/lib/pins       conversation → seat affinity pins
+src/lib/affinity   derives an Anthropic conversation key
+src/lib/weight     plan-derived seat weights
 src/lib/refresh    single-flight token refresh
 src/lib/relay-core shared forward + failover loop (provider adapters plug in)
 src/lib/relay      Anthropic adapter (/v1/messages)

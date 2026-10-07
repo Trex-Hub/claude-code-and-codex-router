@@ -19,7 +19,7 @@ CREATE TABLE accounts (
   last_selected_at            INTEGER,
   created_at                  INTEGER NOT NULL,
   updated_at                  INTEGER NOT NULL
-, provider TEXT NOT NULL DEFAULT 'anthropic', chatgpt_account_id TEXT);
+, provider TEXT NOT NULL DEFAULT 'anthropic', chatgpt_account_id TEXT, weight INTEGER);
 CREATE INDEX idx_accounts_state ON accounts (state);
 CREATE TABLE relay_keys (
   id           TEXT PRIMARY KEY,
@@ -48,7 +48,18 @@ CREATE TABLE usage_events (
 CREATE INDEX idx_usage_created ON usage_events (created_at);
 CREATE INDEX idx_usage_account ON usage_events (account_id, created_at);
 CREATE INDEX idx_accounts_provider_state ON accounts (provider, state);
+CREATE TABLE affinity_pins (
+  affinity_key TEXT PRIMARY KEY,
+  account_id   TEXT NOT NULL,
+  provider     TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL,
+  FOREIGN KEY (account_id) REFERENCES accounts (id)
+);
+CREATE INDEX idx_affinity_pins_account ON affinity_pins (account_id);
 -- Dbmate schema migrations
 INSERT INTO "schema_migrations" (version) VALUES
   ('20261003000000'),
-  ('20261004000000');
+  ('20261004000000'),
+  ('20261005000000'),
+  ('20261006000000');

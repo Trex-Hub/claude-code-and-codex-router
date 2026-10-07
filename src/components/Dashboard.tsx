@@ -37,8 +37,10 @@ import { cn } from "@/lib/utils";
 import { AddAccountDialog } from "./dashboard/AddAccountDialog";
 import { ConfirmDelete } from "./dashboard/ConfirmDelete";
 import { ThemeToggle } from "./dashboard/ThemeToggle";
+import { WeightCell } from "./dashboard/WeightCell";
 import {
   api,
+  accountWeight,
   fmtAgo,
   fmtCompact,
   fmtFull,
@@ -330,6 +332,7 @@ export default function Dashboard() {
                     <TableRow>
                       <TableHead className="pl-6">Account</TableHead>
                       <TableHead>Plan</TableHead>
+                      <TableHead className="text-center">Weight</TableHead>
                       <TableHead>State</TableHead>
                       <TableHead className="text-right">Requests</TableHead>
                       <TableHead className="text-right">Tokens in / cached / out</TableHead>
@@ -352,6 +355,20 @@ export default function Dashboard() {
                           </TableCell>
                           <TableCell>
                             <div>{planLabel(a) ?? "—"}</div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <WeightCell
+                              account={a}
+                              disabled={busy}
+                              onCommit={(weight) =>
+                                void run(
+                                  () => api(`/api/accounts/${a.id}`, jsonInit("PATCH", { weight })),
+                                  weight == null
+                                    ? `${a.label} weight reset to plan default`
+                                    : `${a.label} weight set to ${weight}`,
+                                )
+                              }
+                            />
                           </TableCell>
                           <TableCell><StateBadge account={a} /></TableCell>
                           <TableCell className="text-right font-mono tabular-nums">{fmtInt(u?.requests)}</TableCell>
