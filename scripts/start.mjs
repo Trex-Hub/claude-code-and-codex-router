@@ -1,8 +1,8 @@
-// Production start: apply migrations, then run the standalone server.
+// Production start: apply migrations, then run `next start`.
 //
-// Mirrors docker/entrypoint.sh so `pnpm start` can never boot against an
-// un-migrated (empty) database. Loads the project-root .env itself, because the
-// standalone server would otherwise look for .env inside .next/standalone.
+// Uses Next's normal server (not the standalone output) so `.next/static` is
+// served from the project root exactly as `next build` leaves it. Loads the
+// project-root .env itself, since `next start` only sees the process env.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
@@ -11,9 +11,8 @@ if (existsSync(".env")) {
   process.loadEnvFile(".env");
 }
 
-// The standalone server chdirs into .next/standalone, so a relative sqlite
-// path would resolve to a different file than the one dbmate migrated.
-// Pin it to an absolute path shared by both.
+// A relative sqlite path is resolved from the project root; pin it to an
+// absolute path so the file is unambiguous regardless of the start directory.
 let url = process.env.DATABASE_URL ?? "sqlite:./data/relay.db";
 if (url.startsWith("sqlite:")) {
   const dbPath = url.slice("sqlite:".length);
@@ -46,7 +45,13 @@ if (migrate.status !== 0) {
   process.exit(migrate.status ?? 1);
 }
 
-const server = spawn(process.execPath, [".next/standalone/server.js"], {
+const nextBin = resolve("node_modules/next/dist/bin/next");
+if (!existsSync(nextBin)) {
+  console.error("[claude-relay] next is not installed — run `pnpm install` first.");
+  process.exit(1);
+}
+
+const server = spawn(process.execPath, [nextBin, "start"], {
   stdio: "inherit",
   env: process.env,
 });

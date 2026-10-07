@@ -21,7 +21,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design and
 
 - Node.js 24+
 - pnpm
-- [dbmate](https://github.com/amacneil/dbmate) (or Docker)
+- [dbmate](https://github.com/amacneil/dbmate) (or run the SQL in `db/migrations` by hand)
 
 ## Local development
 
@@ -46,49 +46,47 @@ Open <http://localhost:3000>, sign in with `RELAY_ADMIN_PASSWORD`, then:
    pending the relay listens on that port, so if your browser can reach it the
    account is added automatically. This works when the browser runs on the
    relay host, with `ssh -L 53692:localhost:53692 <relay-host>`, or with
-   Docker's `-p 53692:53692`. If the browser shows "connection refused", copy
+   a port-forward. If the browser shows "connection refused", copy
    the URL from the address bar and paste it into the dashboard (it submits on
    paste).
 
    ChatGPT Codex logins work the same way, with redirect
    `http://localhost:1455/auth/callback` and listener port `1455`
-   (`ssh -L 1455:localhost:1455 <relay-host>`, or Docker's `-p 1455:1455`).
+   (`ssh -L 1455:localhost:1455 <relay-host>`).
    The OAuth client is the Codex CLI's, so no other redirect is accepted.
 
 ### Production (local)
 
 ```bash
-pnpm build      # also copies .next/static into the standalone output
-pnpm start      # loads .env, runs migrations, then serves the standalone server
+pnpm build      # production build (writes .next, including .next/static/css)
+pnpm start      # loads .env, runs migrations, then serves `next start`
 ```
 
 `pnpm start` (via `scripts/start.mjs`) loads the root `.env`, applies pending
-migrations with dbmate, then starts the standalone server — so it can never
-boot against an un-migrated database. It pins `DATABASE_URL` to an absolute
-path because the standalone server `chdir`s into `.next/standalone`.
+migrations with dbmate, then runs `next start` — so it can never boot against an
+un-migrated database. It pins `DATABASE_URL` to an absolute path so a relative
+sqlite path resolves the same regardless of where you started the process.
 
-`pnpm build` copies `.next/static` into `.next/standalone` so the standalone
-server serves CSS; without that copy the app renders unstyled.
-(`pnpm start:next` runs `next start`, which also loads `.env` but does not run
-migrations.)
-
-## Docker
+## Production (pm2)
 
 ```bash
-docker build -t claude-relay .
-
-docker run -d --name claude-relay \
-  -p 3000:3000 \
-  -p 53692:53692 \
-  -p 1455:1455 \
-  -v claude-relay-data:/data \
-  -e RELAY_ADMIN_PASSWORD=change-me \
-  -e RELAY_SESSION_SECRET=change-me-too \
-  claude-relay
+pnpm install
+pnpm build
+pnpm exec pm2 start ecosystem.config.cjs
+pnpm exec pm2 save      # persist across reboots
 ```
 
-Migrations run automatically on start. The SQLite database lives on the
-`/data` volume.
+`ecosystem.config.cjs` runs the same `scripts/start.mjs` described above.
+
+Useful commands: `pm2 logs claude-relay`, `pm2 restart claude-relay`,
+`pm2 reload claude-relay` (zero-downtime restart).
+
+The project deliberately uses Next's normal server rather than the `standalone`
+output: `next start` serves `.next/static` straight from the project root, so CSS
+works with no copy step. Under `standalone`, `.next/static` has to be copied into
+`.next/standalone` after every build, and any `next dev` run overwrites `.next`
+with a dev build that has no CSS — the app then renders unstyled until the next
+production build.
 
 ## Point Pi at the relay
 
@@ -161,7 +159,7 @@ Notes:
 | Command | Purpose |
 |---|---|
 | `pnpm dev` | dev server |
-| `pnpm build` / `pnpm start` | production build / standalone serve |
+| `pnpm build` / `pnpm start` | production build / migrate + `next start` |
 | `pnpm test` | unit tests (shaping, selection, single-flight refresh) |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm db:up` / `db:down` | run / roll back migrations |

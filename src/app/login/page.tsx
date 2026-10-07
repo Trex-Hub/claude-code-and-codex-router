@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ZapIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { ThemeToggle } from "@/components/dashboard/ThemeToggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,26 +36,34 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login panel">
-      <h1>claude-relay</h1>
-      <p className="muted">Sign in to manage accounts.</p>
-      <form onSubmit={submit}>
-        <input
-          type="password"
-          className="grow"
-          placeholder="Admin password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoFocus
-          style={{ width: "100%" }}
-        />
-        {error ? <div className="banner err">{error}</div> : null}
-        <div className="gap">
-          <button className="primary" disabled={busy} type="submit">
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
-        </div>
-      </form>
+    <div className="flex min-h-svh items-center justify-center px-4">
+      <div className="absolute right-4 top-4"><ThemeToggle /></div>
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <div className="mb-2 flex size-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <ZapIcon className="size-5" aria-hidden />
+          </div>
+          <CardTitle className="font-heading text-xl">claude-relay</CardTitle>
+          <CardDescription>Sign in to manage accounts.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submit} className="grid gap-3">
+            <Input
+              type="password"
+              placeholder="Admin password"
+              aria-label="Admin password"
+              aria-invalid={error ? true : undefined}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoFocus
+            />
+            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+            <Button type="submit" disabled={busy || !password}>
+              {busy ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

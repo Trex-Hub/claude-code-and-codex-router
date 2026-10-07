@@ -207,7 +207,7 @@ delegates them to Pi's runtime). The relay owns them, ported from
   verifier and starts a temporary listener on `:53692`.
 2. Anthropic redirects the *browser* to `http://localhost:53692/callback` (the
   only redirect the client is registered for — it can't point at the relay).
-  If the browser can reach the listener (same host, published Docker port, or
+  If the browser can reach the listener (same host, a port-forwarded host, or
   `ssh -L`), the relay completes the login itself; otherwise the admin pastes
   the redirect URL into the dashboard.
 3. Relay exchanges code → access + refresh tokens, stores them, then calls
@@ -282,10 +282,11 @@ No secret is inlined at build time; all read at runtime.
 
 ## Deployment
 
-- Single Docker image (Next.js standalone), `linux/amd64` built explicitly.
-- SQLite file on a mounted volume (`/data`).
+- Single long-running Node process, managed by [pm2](https://pm2.keymetrics.io)
+  (`ecosystem.config.cjs`).
+- SQLite file on local disk.
 - No TLS, no reverse proxy required, no separate DB service.
-- Migrations run on container start (`dbmate up`) before the server binds.
+- Migrations run on start (`dbmate up`) before the server binds.
 
 ---
 

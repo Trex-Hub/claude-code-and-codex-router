@@ -11,8 +11,8 @@ import { pendingCount, recordOutcome, takePendingByState } from "./pending";
  * Each OAuth client is registered for one localhost redirect only
  * (Claude Code: `:53692/callback`, ChatGPT Codex: `:1455/auth/callback`), so
  * the provider always redirects the *browser* to its own localhost. When the
- * browser can reach the listener (same machine as the relay, a published
- * Docker port, or `ssh -L`), the login completes with no paste. Otherwise the
+ * browser can reach the listener (same machine as the relay, an open port, or
+ * `ssh -L`), the login completes with no paste. Otherwise the
  * browser shows "connection refused" and the admin falls back to pasting the
  * URL into the dashboard.
  *
