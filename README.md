@@ -1,4 +1,4 @@
-# claude-relay
+# claude-and-codex-relay
 
 A self-hosted relay that pools several Claude Code and ChatGPT/Codex
 subscription seats behind Anthropic-compatible (`/v1/messages`) and
