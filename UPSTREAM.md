@@ -8,7 +8,7 @@ change silently and fail as misleading errors.
 
 - **Repo:** https://github.com/gotgenes/pi-anthropic-auth
 - **License:** MIT (preserve the upstream copyright header on every copied file)
-- **Pinned:** commit `f648e81` (v3.4.2)
+- **Pinned:** commit `2519b6c` (v3.4.3)
 - **Reference checkout (throwaway, gitignored):**
 
   ```bash

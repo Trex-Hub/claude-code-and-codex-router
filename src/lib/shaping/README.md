@@ -1,7 +1,7 @@
 # Vendored shaping
 
 This directory is **copied** from [`gotgenes/pi-anthropic-auth`](https://github.com/gotgenes/pi-anthropic-auth)
-(MIT — see `LICENSE.pi-anthropic-auth`), pinned to commit `f648e81` (v3.4.2).
+(MIT — see `LICENSE.pi-anthropic-auth`), pinned to commit `2519b6c` (v3.4.3).
 
 It is not reimplemented on purpose: the Claude Code billing-header recipe and
 the system-prompt sanitization are empirically discovered and fail *silently*
